@@ -47,7 +47,7 @@
         </div>
         <div class="d-flex align-items-end gap-2">
           <div>
-            <div class="form-label mb-1 small">日付</div>
+            <div class="form-label mb-1 small">表示基準日（引き取り日）</div>
             <input id="dateInput" type="date" class="form-control" />
           </div>
           <button id="refreshBtn" class="btn btn-outline-secondary">更新（ダミー）</button>
@@ -72,7 +72,6 @@
             送付先営業所サマリー
           </button>
         </li>
-        <!-- ★追加：入力タブ -->
         <li class="nav-item" role="presentation">
           <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pane-entry" type="button" role="tab">
             入力（STOP作成）
@@ -135,7 +134,7 @@
                 </div>
 
                 <div class="text-secondary small mt-2">
-                  ・行クリックでそのドライバーの割当を展開（stop情報：集荷先/送付先/営業所）<br>
+                  ・行クリックでそのドライバーの割当を展開（stop情報：集荷先/送付先/営業所/引き取り日/納入日）<br>
                   ・割当カード内の「完了/保留」操作で Rule B が反映（全割当doneでstop完了）
                 </div>
               </div>
@@ -166,7 +165,6 @@
       <!-- ================= Dispatch ================= -->
       <div class="tab-pane fade" id="pane-dispatch" role="tabpanel">
         <div class="row g-3">
-          <!-- stops list -->
           <div class="col-12 col-lg-5">
             <div class="card border-0 shadow-sm">
               <div class="card-body">
@@ -182,7 +180,6 @@
             </div>
           </div>
 
-          <!-- assign editor -->
           <div class="col-12 col-lg-7">
             <div class="card border-0 shadow-sm">
               <div class="card-body">
@@ -214,7 +211,6 @@
                   </div>
                 </div>
 
-                <!-- assignment add row -->
                 <div class="row g-2 align-items-end">
                   <div class="col-12 col-md-4">
                     <div class="form-label mb-1 small">ドライバー</div>
@@ -276,7 +272,7 @@
 
           </div>
         </div>
-      </div><!-- /dispatch -->
+      </div>
 
       <!-- ================= Branch Summary ================= -->
       <div class="tab-pane fade" id="pane-branch-summary" role="tabpanel">
@@ -306,16 +302,16 @@
                 <div id="branchSummaryList" class="vstack gap-2"></div>
 
                 <div class="text-secondary small mt-3">
-                  ※集計対象：当日の <code>stops</code>（割当の有無は関係なし）<br>
+                  ※集計対象：表示基準日（引き取り日）の <code>stops</code>（割当の有無は関係なし）<br>
                   ※数量・重量は stop の qty / weight_kg を使用（分割割当のtask_qty等はここでは未使用）
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div><!-- /branch summary -->
+      </div>
 
-      <!-- ================= Entry (Natural Input) ================= -->
+      <!-- ================= Entry ================= -->
       <div class="tab-pane fade" id="pane-entry" role="tabpanel">
         <div class="row g-3">
           <div class="col-12 col-lg-7">
@@ -323,9 +319,9 @@
               <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start gap-2">
                   <div>
-                    <div class="fw-bold">STOP入力（当日分の案件を追加）</div>
+                    <div class="fw-bold">STOP入力（案件を追加）</div>
                     <div class="text-secondary small">
-                      集荷先 → 送付先（営業所）を選んで、時間・数量・重量を登録します。登録後、配車タブ/サマリーへ即反映。
+                      集荷先 → 送付先（営業所）を選んで、引き取り日・納入日・時間・数量・重量を登録します。登録後、配車タブ/サマリーへ即反映。
                     </div>
                   </div>
                   <div class="text-end">
@@ -336,6 +332,16 @@
                 <hr class="my-3">
 
                 <div class="row g-2">
+                  <div class="col-12 col-md-6">
+                    <div class="form-label mb-1 small">引き取り日</div>
+                    <input id="entryPickupDate" type="date" class="form-control">
+                  </div>
+
+                  <div class="col-12 col-md-6">
+                    <div class="form-label mb-1 small">納入日</div>
+                    <input id="entryDeliveryDate" type="date" class="form-control">
+                  </div>
+
                   <div class="col-12 col-md-6">
                     <div class="form-label mb-1 small">集荷先（Pickup）</div>
                     <select id="entryPickup" class="form-select"></select>
@@ -430,7 +436,7 @@
             <div class="card border-0 shadow-sm">
               <div class="card-body">
                 <div class="fw-bold">直近の追加結果</div>
-                <div class="text-secondary small mb-2">追加したSTOPがここに表示されます（当日分）。</div>
+                <div class="text-secondary small mb-2">追加したSTOPがここに表示されます。</div>
                 <div id="entryLastResult" class="vstack gap-2">
                   <div class="text-secondary small">まだ追加されていません。</div>
                 </div>
@@ -449,18 +455,14 @@
           </div>
 
         </div>
-      </div><!-- /entry -->
+      </div>
 
     </div>
   </main>
 
-  <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
-    /********************
-     * Storage keys
-     ********************/
     const STORAGE_BRANCHES_KEY = "demo_v3_branches";
     const STORAGE_DESTS_KEY    = "demo_v3_destinations";
     const STORAGE_PICKUPS_KEY  = "demo_v3_pickups";
@@ -468,9 +470,6 @@
     const STORAGE_ASSIGN_KEY   = "demo_v3_assignments";
     const STORAGE_LOG_KEY      = "demo_v3_dispatch_logs";
 
-    /********************
-     * Drivers
-     ********************/
     const DRIVERS = [
       { id: "d1", name: "津田ドライバー" },
       { id: "d2", name: "作見ドライバー" },
@@ -479,9 +478,6 @@
     ];
     function driverName(id){ return DRIVERS.find(d=>d.id===id)?.name || "（未設定）"; }
 
-    /********************
-     * Utilities
-     ********************/
     function pad2(n){ return String(n).padStart(2,"0"); }
     function todayStr(){
       const d = new Date();
@@ -529,9 +525,6 @@
       localStorage.setItem(key, JSON.stringify(value));
     }
 
-    /********************
-     * Master data
-     ********************/
     function ensureMasterData(){
       const branches = loadJson(STORAGE_BRANCHES_KEY, null);
       const dests    = loadJson(STORAGE_DESTS_KEY, null);
@@ -569,9 +562,6 @@
     function getDestById(id){ return loadJson(STORAGE_DESTS_KEY, []).find(x=>x.id===id); }
     function getPickupById(id){ return loadJson(STORAGE_PICKUPS_KEY, []).find(x=>x.id===id); }
 
-    /********************
-     * Stops generator (1000件)
-     ********************/
     function makeStopsForDate(date){
       const pickups = loadJson(STORAGE_PICKUPS_KEY, []);
       const dests = loadJson(STORAGE_DESTS_KEY, []);
@@ -595,17 +585,13 @@
       }
 
       const TARGET = 1000;
-
       const startMin = 5*60;
       const endMin = 19*60 - 1;
 
       for (let i=0; i<TARGET; i++){
         const pu = extendedPickups[i % extendedPickups.length];
-
         const allowed = Array.from(allowedMap.get(pu.id) || []);
-        const dstId = allowed.length
-          ? allowed[i % allowed.length]
-          : dests[i % dests.length].id;
+        const dstId = allowed.length ? allowed[i % allowed.length] : dests[i % dests.length].id;
 
         const minuteOfDay = startMin + (i * 7) % (endMin - startMin + 1);
         const hh = Math.floor(minuteOfDay / 60);
@@ -618,6 +604,8 @@
         stops.push({
           id: `stop_${date}_${i}`,
           date,
+          pickup_date: date,
+          delivery_date: date,
           pickup_id: pu.id,
           destination_id: dstId,
           pickup_time,
@@ -629,6 +617,8 @@
       stops.push({
         id: `stop_exp_kowa2_obuse_${date}`,
         date,
+        pickup_date: date,
+        delivery_date: date,
         pickup_id: "pu_kowa_2",
         destination_id: "dst_obuse_dc",
         pickup_time: "10:30",
@@ -639,16 +629,12 @@
       return stops;
     }
 
-    /********************
-     * Initial assignments (軽量化: 30%だけ初期割当)
-     ********************/
     function makeInitialAssignments(date, stops){
       const assigns = [];
       const pickD = (idx)=>DRIVERS[idx % DRIVERS.length].id;
 
       stops.forEach((s, i)=>{
         const r = i % 10;
-
         if (r <= 6) return;
 
         assigns.push({
@@ -693,9 +679,6 @@
       return "open";
     }
 
-    /********************
-     * State
-     ********************/
     let STATE = {
       date: todayStr(),
       query: "",
@@ -708,9 +691,6 @@
       destExpanded: {},
     };
 
-    /********************
-     * DOM refs
-     ********************/
     const dateInput = document.getElementById("dateInput");
     const refreshBtn = document.getElementById("refreshBtn");
     const metaText = document.getElementById("metaText");
@@ -750,20 +730,27 @@
     const branchKpis = document.getElementById("branchKpis");
     const branchSummaryList = document.getElementById("branchSummaryList");
 
-    /********************
-     * Date-scoped data access
-     ********************/
+    function normalizeStopDates(stop){
+      return {
+        ...stop,
+        pickup_date: stop.pickup_date || stop.date || "",
+        delivery_date: stop.delivery_date || stop.date || ""
+      };
+    }
+
     function getStopsForDate(){
-      const all = loadJson(STORAGE_STOPS_KEY, []);
-      return all.filter(s=>s.date===STATE.date);
+      const all = loadJson(STORAGE_STOPS_KEY, []).map(normalizeStopDates);
+      return all.filter(s=>(s.pickup_date || s.date) === STATE.date);
     }
     function getAssignmentsForDate(){
+      const stopIds = new Set(getStopsForDate().map(s=>s.id));
       const all = loadJson(STORAGE_ASSIGN_KEY, []);
-      return all.filter(a=>a.date===STATE.date);
+      return all.filter(a=>stopIds.has(a.stop_id));
     }
     function saveAssignmentsForDate(assignsForDate){
+      const stopIds = new Set(getStopsForDate().map(s=>s.id));
       const all = loadJson(STORAGE_ASSIGN_KEY, []);
-      const rest = all.filter(a=>a.date!==STATE.date);
+      const rest = all.filter(a=>!stopIds.has(a.stop_id));
       saveJson(STORAGE_ASSIGN_KEY, rest.concat(assignsForDate));
     }
     function getLogs(){
@@ -773,15 +760,13 @@
       saveJson(STORAGE_LOG_KEY, logs);
     }
 
-    /********************
-     * Enrich stop with pickup/destination/branch names
-     ********************/
     function enrichStop(stop){
-      const pickup = getPickupById(stop.pickup_id) || {name:"(不明pickup)"};
-      const dest = getDestById(stop.destination_id) || {name:"(不明dest)", branch_id:null};
+      const n = normalizeStopDates(stop);
+      const pickup = getPickupById(n.pickup_id) || {name:"(不明pickup)"};
+      const dest = getDestById(n.destination_id) || {name:"(不明dest)", branch_id:null};
       const br = dest.branch_id ? (getBranchById(dest.branch_id) || {name:"(不明営業所)"}) : {name:"(営業所なし)"};
       return {
-        ...stop,
+        ...n,
         pickup_name: pickup.name,
         destination_name: dest.name,
         branch_id: dest.branch_id,
@@ -789,21 +774,21 @@
       };
     }
 
-    /********************
-     * Ensure data exists
-     ********************/
     function ensureDataForDate(){
       ensureMasterData();
 
-      const allStops = loadJson(STORAGE_STOPS_KEY, []);
-      const hasStops = allStops.some(s=>s.date===STATE.date);
+      const allStops = loadJson(STORAGE_STOPS_KEY, []).map(normalizeStopDates);
+      const hasStops = allStops.some(s=>(s.pickup_date || s.date)===STATE.date);
       if (!hasStops){
         const newStops = makeStopsForDate(STATE.date);
         saveJson(STORAGE_STOPS_KEY, allStops.concat(newStops));
+      } else {
+        saveJson(STORAGE_STOPS_KEY, allStops);
       }
 
       const allAssign = loadJson(STORAGE_ASSIGN_KEY, []);
-      const hasAssign = allAssign.some(a=>a.date===STATE.date);
+      const todayStopIds = new Set(getStopsForDate().map(s=>s.id));
+      const hasAssign = allAssign.some(a=>todayStopIds.has(a.stop_id));
       if (!hasAssign){
         const stops = getStopsForDate();
         const initA = makeInitialAssignments(STATE.date, stops);
@@ -811,9 +796,6 @@
       }
     }
 
-    /********************
-     * Render: logs
-     ********************/
     function renderLogPanel(){
       const logs = getLogs().slice().reverse().filter(l=>l.date===STATE.date);
       logList.innerHTML = "";
@@ -835,7 +817,7 @@
               <div class="text-secondary small mono">${new Date(l.at).toLocaleString("ja-JP")}</div>
             </div>
             <div class="text-secondary small mt-1">
-              対象日: <span class="mono">${escapeHtml(l.date)}</span> / 割当追加: <span class="mono">${l.addedCount}</span>件 ${issuer}
+              表示基準日: <span class="mono">${escapeHtml(l.date)}</span> / 割当追加: <span class="mono">${l.addedCount}</span>件 ${issuer}
             </div>
             <div class="mt-2 small" style="white-space:pre-wrap;">${escapeHtml(l.note||"")}</div>
           </div>
@@ -844,9 +826,6 @@
       });
     }
 
-    /********************
-     * Dashboard aggregation
-     ********************/
     function groupAssignmentsByDriver(assignments, stopsEnriched, query){
       const q = (query||"").trim().toLowerCase();
       const map = new Map();
@@ -910,7 +889,7 @@
     }
 
     function renderDashboard(){
-      metaText.textContent = `同期: OK / 最終更新: ${nowHM()} / 共有: localStorage`;
+      metaText.textContent = `同期: OK / 最終更新: ${nowHM()} / 共有: localStorage / 表示基準日(引き取り日): ${STATE.date}`;
 
       const stopsEnriched = getStopsForDate().map(enrichStop);
       const assignments = getAssignmentsForDate();
@@ -982,6 +961,8 @@
                       <div class="text-secondary small mt-1">
                         <span class="pill me-2">送付先</span>${escapeHtml(s.destination_name||"(不明)")}
                         <span class="pill ms-2">営業所 ${escapeHtml(s.branch_name||"-")}</span>
+                        <span class="pill ms-2">引取日 ${escapeHtml(s.pickup_date||"-")}</span>
+                        <span class="pill ms-1">納入日 ${escapeHtml(s.delivery_date||"-")}</span>
                         <span class="pill ms-2">数量 ${escapeHtml(s.qty??"-")}</span>
                         <span class="pill ms-1">重量 ${escapeHtml(s.weight_kg??"-")}kg</span>
                       </div>
@@ -1029,9 +1010,6 @@
       renderLogPanel();
     }
 
-    /********************
-     * Dispatch render
-     ********************/
     function renderStopsList(){
       const stopsEnriched = getStopsForDate().map(enrichStop);
       const assignments = getAssignmentsForDate();
@@ -1081,6 +1059,10 @@
                 <span class="ms-2 pill text-secondary">割当 ${assignedCount}件</span>
               </div>
               <div class="text-secondary small mt-1">
+                引取日: <span class="mono">${escapeHtml(s.pickup_date)}</span> /
+                納入日: <span class="mono">${escapeHtml(s.delivery_date)}</span>
+              </div>
+              <div class="text-secondary small mt-1">
                 数量: <span class="mono">${escapeHtml(s.qty)}</span> / 重量: <span class="mono">${escapeHtml(s.weight_kg)}</span>kg
               </div>
             </div>
@@ -1105,7 +1087,7 @@
 
       selectedStopCard.style.display = "";
       selStopTitle.textContent = `${stop.pickup_time} 集荷先: ${stop.pickup_name}`;
-      selStopSub.textContent = `送付先: ${stop.destination_name}（営業所: ${stop.branch_name}） / 数量:${stop.qty} / 重量:${stop.weight_kg}kg`;
+      selStopSub.textContent = `送付先: ${stop.destination_name}（営業所: ${stop.branch_name}） / 引取日:${stop.pickup_date} / 納入日:${stop.delivery_date} / 数量:${stop.qty} / 重量:${stop.weight_kg}kg`;
 
       const st = computeStopStatus(stop.id, assignments);
       const sb = stopStatusBadge(st);
@@ -1209,7 +1191,8 @@
 
       const lines = [];
       lines.push(`【配車指示】${stop.pickup_time} 集荷先:${stop.pickup_name}`);
-      lines.push(`対象日：${STATE.date}`);
+      lines.push(`引き取り日：${stop.pickup_date}`);
+      lines.push(`納入日：${stop.delivery_date}`);
       lines.push(`送付先：${stop.destination_name}（営業所:${stop.branch_name}）`);
       lines.push(`数量：${stop.qty} / 重量：${stop.weight_kg}kg`);
       lines.push(`割当追加：${STATE.draftAssignments.length}件`);
@@ -1228,9 +1211,6 @@
       return [...existing, ...drafts].some(a=>a.stop_id===stopId && a.driver_id===driverId);
     }
 
-    /********************
-     * Branch summary aggregation
-     ********************/
     function buildBranchSummary(stopsEnriched){
       const branches = new Map();
 
@@ -1437,9 +1417,6 @@
       });
     }
 
-    /********************
-     * Dispatch render helper
-     ********************/
     function renderDispatch(){
       renderStopsList();
       renderSelectedStopHeader();
@@ -1447,9 +1424,6 @@
       renderDispatchCurrentAssignments();
     }
 
-    /********************
-     * Init driver select
-     ********************/
     function initDriverSelect(){
       driverSelect.innerHTML = "";
       DRIVERS.forEach(d=>{
@@ -1460,9 +1434,6 @@
       });
     }
 
-    /********************
-     * Render all
-     ********************/
     function renderAll(){
       ensureDataForDate();
       renderDashboard();
@@ -1474,9 +1445,8 @@
       issueBtn.disabled = STATE.draftAssignments.length===0;
     }
 
-    /********************
-     * Entry tab (Natural Input)
-     ********************/
+    const entryPickupDate = document.getElementById("entryPickupDate");
+    const entryDeliveryDate = document.getElementById("entryDeliveryDate");
     const entryPickup = document.getElementById("entryPickup");
     const entryDestination = document.getElementById("entryDestination");
     const entryBranchHint = document.getElementById("entryBranchHint");
@@ -1540,6 +1510,8 @@
     }
 
     function resetEntryForm(){
+      entryPickupDate.value = STATE.date;
+      entryDeliveryDate.value = STATE.date;
       entryTime.value = "09:00";
       entryQty.value = 1;
       entryWeight.value = 50;
@@ -1575,11 +1547,15 @@
             <span class="pill ms-2">営業所 ${escapeHtml(s.branch_name)}</span>
           </div>
           <div class="text-secondary small mt-1">
+            引取日: <span class="mono">${escapeHtml(s.pickup_date)}</span> /
+            納入日: <span class="mono">${escapeHtml(s.delivery_date)}</span>
+          </div>
+          <div class="text-secondary small mt-1">
             数量: <span class="mono">${escapeHtml(s.qty)}</span> /
             重量: <span class="mono">${escapeHtml(s.weight_kg)}</span>kg
           </div>
           <div class="text-secondary small mt-1">
-            ${entryNote.value.trim() ? `備考: ${escapeHtml(entryNote.value.trim())}<br>` : ""}
+            ${s.note ? `備考: ${escapeHtml(s.note)}<br>` : ""}
             割当: ${escapeHtml(assignText)}
           </div>
           <div class="mt-2">
@@ -1597,11 +1573,20 @@
     function createStopFromEntry(){
       const pickupId = entryPickup.value;
       const destId = entryDestination.value;
-
+      const pickupDate = (entryPickupDate.value || "").trim();
+      const deliveryDate = (entryDeliveryDate.value || "").trim();
       const t = (entryTime.value || "").trim();
       const qty = Number(entryQty.value);
       const w = Number(entryWeight.value);
 
+      if (!pickupDate){
+        alert("引き取り日を入力してください。");
+        return;
+      }
+      if (!deliveryDate){
+        alert("納入日を入力してください。");
+        return;
+      }
       if (!pickupId || !destId){
         alert("集荷先と送付先を選択してください。");
         return;
@@ -1619,12 +1604,14 @@
         return;
       }
 
-      const allStops = loadJson(STORAGE_STOPS_KEY, []);
-      const id = `stop_${STATE.date}_manual_${Date.now()}`;
+      const allStops = loadJson(STORAGE_STOPS_KEY, []).map(normalizeStopDates);
+      const id = `stop_${pickupDate}_manual_${Date.now()}`;
 
       allStops.push({
         id,
-        date: STATE.date,
+        date: pickupDate,
+        pickup_date: pickupDate,
+        delivery_date: deliveryDate,
         pickup_id: pickupId,
         destination_id: destId,
         pickup_time: t,
@@ -1639,7 +1626,7 @@
         const allAssign = loadJson(STORAGE_ASSIGN_KEY, []);
         allAssign.push({
           id: uuidLike("as"),
-          date: STATE.date,
+          date: pickupDate,
           stop_id: id,
           driver_id: entryAssignDriver.value,
           role: entryAssignRole.value,
@@ -1652,13 +1639,13 @@
         saveJson(STORAGE_ASSIGN_KEY, allAssign);
       }
 
+      STATE.date = pickupDate;
+      dateInput.value = pickupDate;
+
       renderAll();
       pushEntryResultCard(id);
     }
 
-    /********************
-     * Events
-     ********************/
     dateInput.addEventListener("change", ()=>{
       STATE.date = dateInput.value || todayStr();
       ensureDataForDate();
@@ -1673,7 +1660,6 @@
 
     refreshBtn.addEventListener("click", ()=>renderAll());
 
-    // dashboard search
     let tmr=null;
     searchInput.addEventListener("input", ()=>{
       clearTimeout(tmr);
@@ -1684,7 +1670,6 @@
       }, 120);
     });
 
-    // expand driver + assignment buttons
     driversTbody.addEventListener("click", (e)=>{
       const t = e.target;
       if (!(t instanceof HTMLElement)) return;
@@ -1714,7 +1699,6 @@
       renderLogPanel();
     });
 
-    // dispatch stop search
     let tmr2=null;
     stopSearchInput.addEventListener("input", ()=>{
       clearTimeout(tmr2);
@@ -1724,7 +1708,6 @@
       }, 120);
     });
 
-    // select stop in dispatch
     stopsList.addEventListener("click", (e)=>{
       const t = e.target;
       if (!(t instanceof HTMLElement)) return;
@@ -1825,7 +1808,6 @@
       renderAll();
     });
 
-    // branch summary search + expand/collapse
     let tmr3=null;
     branchSummarySearch.addEventListener("input", ()=>{
       clearTimeout(tmr3);
@@ -1871,16 +1853,12 @@
       }
     });
 
-    // shared updates across tabs
     window.addEventListener("storage", (e)=>{
       if ([STORAGE_BRANCHES_KEY, STORAGE_DESTS_KEY, STORAGE_PICKUPS_KEY, STORAGE_STOPS_KEY, STORAGE_ASSIGN_KEY, STORAGE_LOG_KEY].includes(e.key)){
         renderAll();
       }
     });
 
-    /********************
-     * Entry events
-     ********************/
     entryPickup?.addEventListener("change", ()=>{
       fillEntryDestinationOptionsByPickup(entryPickup.value);
     });
@@ -1901,7 +1879,6 @@
       resetEntryForm();
     });
 
-    // “配車タブで開く”
     entryLastResult?.addEventListener("click", (e)=>{
       const t = e.target;
       if (!(t instanceof HTMLElement)) return;
@@ -1919,9 +1896,6 @@
       renderDispatch();
     });
 
-    /********************
-     * Init
-     ********************/
     (function init(){
       STATE.date = todayStr();
       dateInput.value = STATE.date;
@@ -1929,7 +1903,6 @@
       ensureDataForDate();
       initDriverSelect();
 
-      // ★Entry初期化
       fillEntryPickupOptions();
       if (entryPickup.value) fillEntryDestinationOptionsByPickup(entryPickup.value);
       initEntryDriverSelect();
@@ -1937,7 +1910,6 @@
 
       renderAll();
     })();
-
   </script>
 </body>
 </html>
