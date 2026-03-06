@@ -1,0 +1,1943 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>管理画面＋配車（Rule B + マスタ + 営業所サマリー + 入力）デモ 1000件版</title>
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    body { background:#f6f7f9; }
+    .sticky-top-blur{
+      position: sticky; top: 0; z-index: 1020;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid rgba(0,0,0,0.08);
+    }
+    .mono { font-variant-numeric: tabular-nums; font-feature-settings:"tnum" 1; }
+    .pill { border: 1px solid rgba(0,0,0,0.12); border-radius: 999px; padding: 2px 10px; background: #fff; }
+    .shadow-soft { box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+    .list-max { max-height: 56vh; overflow:auto; }
+    .row-click { cursor:pointer; }
+    .row-click:hover { background: rgba(13,110,253,0.04); }
+    .expanded-cell { background:#f8f9fa; }
+    .card-clickable { cursor:pointer; }
+    .smallcap { letter-spacing:.08em; }
+    .muted { color: rgba(33,37,41,.72); }
+    .soft-warn { background: rgba(255,193,7,0.14); }
+    .soft-danger { background: rgba(220,53,69,0.08); }
+    .soft-success { background: rgba(25,135,84,0.10); }
+    .kpi { display:inline-flex; gap:8px; align-items:center; }
+    .kpi .label { color: rgba(33,37,41,.70); font-size: .85rem; }
+    .kpi .value { font-weight: 700; }
+  </style>
+</head>
+
+<body>
+  <div class="sticky-top-blur">
+    <div class="container py-3">
+      <div class="d-flex flex-wrap align-items-end justify-content-between gap-3">
+        <div>
+          <div class="fw-bold fs-4">管理画面（Rule B + マスタ + 営業所サマリー + 入力 デモ / 1000件）</div>
+          <div class="text-secondary small">
+            Pickup(集荷先) 1→N Destination(送付先) / Branch(営業所) 1→N Destination / Stopは pickup_id & destination_id 参照
+          </div>
+        </div>
+        <div class="d-flex align-items-end gap-2">
+          <div>
+            <div class="form-label mb-1 small">日付</div>
+            <input id="dateInput" type="date" class="form-control" />
+          </div>
+          <button id="refreshBtn" class="btn btn-outline-secondary">更新（ダミー）</button>
+        </div>
+      </div>
+
+      <div class="mt-2 text-secondary small" id="metaText">同期: OK / 最終更新: --:-- / 共有: localStorage</div>
+
+      <ul class="nav nav-tabs mt-3" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#pane-dashboard" type="button" role="tab">
+            進捗ダッシュボード（割当ベース）
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pane-dispatch" type="button" role="tab">
+            配車（共同担当/分割割当）
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pane-branch-summary" type="button" role="tab">
+            送付先営業所サマリー
+          </button>
+        </li>
+        <!-- ★追加：入力タブ -->
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pane-entry" type="button" role="tab">
+            入力（STOP作成）
+          </button>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <main class="container py-3">
+    <div class="tab-content">
+
+      <!-- ================= Dashboard ================= -->
+      <div class="tab-pane fade show active" id="pane-dashboard" role="tabpanel">
+        <div class="row g-3">
+          <div class="col-12 col-lg-8">
+            <div class="card border-0 shadow-sm mb-3">
+              <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="fw-bold">サマリー（当日）</div>
+                <div class="d-flex flex-wrap gap-2 mono" id="summaryBadges"></div>
+              </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-3">
+              <div class="card-body">
+                <div class="row g-2 align-items-center">
+                  <div class="col-12 col-md-6">
+                    <input id="searchInput" type="search" class="form-control" placeholder="ドライバー名で検索（例：津田）">
+                  </div>
+                  <div class="col-12 col-md-6 text-md-end">
+                    <span class="badge bg-warning text-dark me-2">未完了</span>
+                    <span class="badge bg-secondary me-2">完了</span>
+                    <span class="badge bg-danger">保留</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <div class="fw-bold">ドライバー一覧（assignment集計）</div>
+                  <div class="text-secondary small mono" id="countText">表示: 0名</div>
+                </div>
+
+                <div class="table-responsive">
+                  <table class="table align-middle mb-0">
+                    <thead>
+                      <tr class="text-secondary small">
+                        <th style="width:36%">ドライバー</th>
+                        <th style="width:12%" class="text-end">未完了</th>
+                        <th style="width:12%" class="text-end">完了</th>
+                        <th style="width:12%" class="text-end">保留</th>
+                        <th style="width:12%" class="text-end">全割当</th>
+                        <th style="width:16%" class="text-end">最終完了</th>
+                      </tr>
+                    </thead>
+                    <tbody id="driversTbody"></tbody>
+                  </table>
+                </div>
+
+                <div class="text-secondary small mt-2">
+                  ・行クリックでそのドライバーの割当を展開（stop情報：集荷先/送付先/営業所）<br>
+                  ・割当カード内の「完了/保留」操作で Rule B が反映（全割当doneでstop完了）
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-lg-4">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                  <div class="fw-bold">配車指示ログ（共有）</div>
+                  <button class="btn btn-sm btn-outline-danger" id="clearLogBtn">ログ削除</button>
+                </div>
+                <div class="text-secondary small mb-2">
+                  ※同一ブラウザの別タブ/別ウィンドウで共有（localStorage）
+                </div>
+                <div id="logList" class="vstack gap-2 list-max"></div>
+              </div>
+            </div>
+
+            <div class="alert alert-light border mt-3 small text-secondary mb-0">
+              本番は <code>branches</code> / <code>destinations</code> / <code>pickups</code> / <code>stops</code> / <code>stop_assignments</code> をDB化します。
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= Dispatch ================= -->
+      <div class="tab-pane fade" id="pane-dispatch" role="tabpanel">
+        <div class="row g-3">
+          <!-- stops list -->
+          <div class="col-12 col-lg-5">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="fw-bold mb-1">① 案件（stops）を選ぶ</div>
+                <div class="text-secondary small mb-2">
+                  stopは pickup_id（集荷先）と destination_id（送付先）を参照。集荷先1→送付先複数のstopが存在します。
+                </div>
+
+                <input id="stopSearchInput" type="search" class="form-control mb-2" placeholder="集荷先名 / 送付先名 / 営業所名で検索（例：興和 / 小布施 / 関東）">
+
+                <div id="stopsList" class="vstack gap-2 list-max"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- assign editor -->
+          <div class="col-12 col-lg-7">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                  <div>
+                    <div class="fw-bold mb-1">② 割当を追加（stop_assignments）</div>
+                    <div class="text-secondary small">同一stopに複数ドライバー割当OK（共同担当/分割）</div>
+                  </div>
+                  <div class="text-end">
+                    <div class="text-secondary small">指示者名（任意）</div>
+                    <input id="issuerInput" class="form-control form-control-sm" placeholder="例：神田" style="max-width:160px;">
+                  </div>
+                </div>
+
+                <hr class="my-3">
+
+                <div id="selectedStopCard" class="card border-0 shadow-soft mb-3" style="display:none;">
+                  <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                      <div>
+                        <div class="fw-bold" id="selStopTitle">-</div>
+                        <div class="text-secondary small mt-1" id="selStopSub">-</div>
+                      </div>
+                      <div class="text-end">
+                        <span class="badge" id="selStopStatusBadge">-</span>
+                        <div class="text-secondary small mt-1">Rule B：全割当doneで完了</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- assignment add row -->
+                <div class="row g-2 align-items-end">
+                  <div class="col-12 col-md-4">
+                    <div class="form-label mb-1 small">ドライバー</div>
+                    <select id="driverSelect" class="form-select"></select>
+                  </div>
+                  <div class="col-12 col-md-4">
+                    <div class="form-label mb-1 small">role</div>
+                    <select id="roleSelect" class="form-select">
+                      <option value="primary">primary（主担当）</option>
+                      <option value="helper">helper（補助）</option>
+                      <option value="split_1">split_1（分割1）</option>
+                      <option value="split_2">split_2（分割2）</option>
+                    </select>
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <div class="form-label mb-1 small">分割 数量</div>
+                    <input id="taskQtyInput" type="number" min="0" class="form-control" placeholder="任意">
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <div class="form-label mb-1 small">分割 重量</div>
+                    <input id="taskWeightInput" type="number" min="0" class="form-control" placeholder="kg 任意">
+                  </div>
+                </div>
+
+                <div class="d-flex gap-2 mt-2">
+                  <button id="addAssignBtn" class="btn btn-outline-primary" disabled>割当を追加</button>
+                  <button id="clearDraftBtn" class="btn btn-outline-secondary" disabled>下書きクリア</button>
+                </div>
+
+                <hr class="my-3">
+
+                <div class="fw-bold mb-2">③ 下書き（今回発行する割当）</div>
+                <div id="draftList" class="vstack gap-2 mb-3"></div>
+
+                <div class="fw-bold mb-1">④ 指示文（共有ログ）</div>
+                <textarea id="instructionText" class="form-control" rows="4"
+                  placeholder="例：興和工業所2 → 小布施DC（小布施営業所）を津田(primary)+作見(helper)で対応。上から順に実施。"></textarea>
+
+                <div class="d-flex gap-2 mt-3">
+                  <button id="previewBtn" class="btn btn-outline-secondary" disabled>指示プレビュー</button>
+                  <button id="issueBtn" class="btn btn-success flex-grow-1" disabled>指示を発行（共有）</button>
+                </div>
+
+                <div class="alert alert-light border mt-3 small text-secondary mb-0">
+                  ※デモでは (stop_id, driver_id) の重複割当を禁止。<br>
+                  本番はDBで <code>unique(stop_id, driver_user_id)</code> を付与推奨。
+                </div>
+              </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mt-3">
+              <div class="card-body">
+                <div class="fw-bold mb-2">現割当（このstopのassignments）</div>
+                <div id="currentAssignList" class="vstack gap-2">
+                  <div class="text-secondary small">stopを選択すると表示されます。</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div><!-- /dispatch -->
+
+      <!-- ================= Branch Summary ================= -->
+      <div class="tab-pane fade" id="pane-branch-summary" role="tabpanel">
+        <div class="row g-3">
+          <div class="col-12">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-end gap-2">
+                  <div>
+                    <div class="fw-bold">送付先営業所サマリー（当日）</div>
+                    <div class="text-secondary small">
+                      「営業所 → 送付先 → 荷主（集荷先）」で数量・重量を集計。送付先ごとの合計重量も表示します。
+                    </div>
+                  </div>
+                  <div class="d-flex gap-2">
+                    <input id="branchSummarySearch" class="form-control" style="max-width:320px;"
+                      placeholder="営業所/送付先/荷主で検索（例：小布施 / 小布施DC / 興和）">
+                    <button id="expandAllBranchBtn" class="btn btn-outline-secondary">全部展開</button>
+                    <button id="collapseAllBranchBtn" class="btn btn-outline-secondary">畳む</button>
+                  </div>
+                </div>
+
+                <hr class="my-3">
+
+                <div id="branchKpis" class="d-flex flex-wrap gap-3 mb-2"></div>
+
+                <div id="branchSummaryList" class="vstack gap-2"></div>
+
+                <div class="text-secondary small mt-3">
+                  ※集計対象：当日の <code>stops</code>（割当の有無は関係なし）<br>
+                  ※数量・重量は stop の qty / weight_kg を使用（分割割当のtask_qty等はここでは未使用）
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /branch summary -->
+
+      <!-- ================= Entry (Natural Input) ================= -->
+      <div class="tab-pane fade" id="pane-entry" role="tabpanel">
+        <div class="row g-3">
+          <div class="col-12 col-lg-7">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                  <div>
+                    <div class="fw-bold">STOP入力（当日分の案件を追加）</div>
+                    <div class="text-secondary small">
+                      集荷先 → 送付先（営業所）を選んで、時間・数量・重量を登録します。登録後、配車タブ/サマリーへ即反映。
+                    </div>
+                  </div>
+                  <div class="text-end">
+                    <span class="badge bg-light text-dark border">保存先: localStorage</span>
+                  </div>
+                </div>
+
+                <hr class="my-3">
+
+                <div class="row g-2">
+                  <div class="col-12 col-md-6">
+                    <div class="form-label mb-1 small">集荷先（Pickup）</div>
+                    <select id="entryPickup" class="form-select"></select>
+                    <div class="form-text">※選んだ集荷先に紐づく送付先のみ表示</div>
+                  </div>
+
+                  <div class="col-12 col-md-6">
+                    <div class="form-label mb-1 small">送付先（Destination）</div>
+                    <select id="entryDestination" class="form-select"></select>
+                    <div class="form-text" id="entryBranchHint">営業所: -</div>
+                  </div>
+
+                  <div class="col-6 col-md-4">
+                    <div class="form-label mb-1 small">集荷時刻</div>
+                    <input id="entryTime" type="time" class="form-control" value="09:00">
+                  </div>
+
+                  <div class="col-6 col-md-4">
+                    <div class="form-label mb-1 small">数量</div>
+                    <input id="entryQty" type="number" min="0" class="form-control" value="1">
+                  </div>
+
+                  <div class="col-12 col-md-4">
+                    <div class="form-label mb-1 small">重量（kg）</div>
+                    <input id="entryWeight" type="number" min="0" class="form-control" value="50">
+                  </div>
+
+                  <div class="col-12">
+                    <div class="form-label mb-1 small">備考（任意）</div>
+                    <input id="entryNote" class="form-control" placeholder="例：至急 / 2便目 / 梱包注意 など">
+                  </div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                  <button id="entryCreateStopBtn" class="btn btn-primary">
+                    STOPを追加
+                  </button>
+                  <button id="entryResetBtn" class="btn btn-outline-secondary">
+                    入力をリセット
+                  </button>
+                </div>
+
+                <div class="alert alert-light border small text-secondary mt-3 mb-0">
+                  ・このタブは「案件を追加する」用途です（配車は配車タブでOK）<br>
+                  ・ただし下の「同時に割当を追加」もONにできます（任意）
+                </div>
+
+                <hr class="my-3">
+
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="entryAddAssignSwitch">
+                  <label class="form-check-label" for="entryAddAssignSwitch">
+                    STOP追加と同時に「割当」も追加する（任意）
+                  </label>
+                </div>
+
+                <div id="entryAssignArea" style="display:none;" class="mt-2">
+                  <div class="row g-2 align-items-end">
+                    <div class="col-12 col-md-4">
+                      <div class="form-label mb-1 small">ドライバー</div>
+                      <select id="entryAssignDriver" class="form-select"></select>
+                    </div>
+                    <div class="col-12 col-md-4">
+                      <div class="form-label mb-1 small">role</div>
+                      <select id="entryAssignRole" class="form-select">
+                        <option value="primary">primary（主担当）</option>
+                        <option value="helper">helper（補助）</option>
+                        <option value="split_1">split_1（分割1）</option>
+                        <option value="split_2">split_2（分割2）</option>
+                      </select>
+                    </div>
+                    <div class="col-6 col-md-2">
+                      <div class="form-label mb-1 small">分割 数量</div>
+                      <input id="entryAssignQty" type="number" min="0" class="form-control" placeholder="任意">
+                    </div>
+                    <div class="col-6 col-md-2">
+                      <div class="form-label mb-1 small">分割 重量</div>
+                      <input id="entryAssignWeight" type="number" min="0" class="form-control" placeholder="kg 任意">
+                    </div>
+                  </div>
+
+                  <div class="text-secondary small mt-2">
+                    ※「STOP＋割当」を一括登録したいときに使います。共同担当は配車タブで追加してください。
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-lg-5">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="fw-bold">直近の追加結果</div>
+                <div class="text-secondary small mb-2">追加したSTOPがここに表示されます（当日分）。</div>
+                <div id="entryLastResult" class="vstack gap-2">
+                  <div class="text-secondary small">まだ追加されていません。</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mt-3">
+              <div class="card-body">
+                <div class="fw-bold">ワンポイント</div>
+                <div class="text-secondary small mt-2">
+                  ・入力→保存→配車タブで共同担当を追加、が一番運用しやすいです。<br>
+                  ・「興和工業所2→小布施DC」など“よくある組み合わせ”は、集荷先を選ぶだけで送付先候補が絞られます。
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /entry -->
+
+    </div>
+  </main>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    /********************
+     * Storage keys
+     ********************/
+    const STORAGE_BRANCHES_KEY = "demo_v3_branches";
+    const STORAGE_DESTS_KEY    = "demo_v3_destinations";
+    const STORAGE_PICKUPS_KEY  = "demo_v3_pickups";
+    const STORAGE_STOPS_KEY    = "demo_v3_stops";
+    const STORAGE_ASSIGN_KEY   = "demo_v3_assignments";
+    const STORAGE_LOG_KEY      = "demo_v3_dispatch_logs";
+
+    /********************
+     * Drivers
+     ********************/
+    const DRIVERS = [
+      { id: "d1", name: "津田ドライバー" },
+      { id: "d2", name: "作見ドライバー" },
+      { id: "d3", name: "山本ドライバー" },
+      { id: "d4", name: "中村ドライバー" },
+    ];
+    function driverName(id){ return DRIVERS.find(d=>d.id===id)?.name || "（未設定）"; }
+
+    /********************
+     * Utilities
+     ********************/
+    function pad2(n){ return String(n).padStart(2,"0"); }
+    function todayStr(){
+      const d = new Date();
+      return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+    }
+    function nowHM(){
+      const d = new Date();
+      return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    }
+    function uuidLike(prefix="id"){
+      return prefix + "_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
+    }
+    function escapeHtml(str){
+      return String(str || "")
+        .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+        .replaceAll('"',"&quot;").replaceAll("'","&#039;");
+    }
+
+    function statusLabel(s){
+      if (s === "done") return "完了";
+      if (s === "hold") return "保留";
+      return "未完了";
+    }
+    function statusBadgeClass(s){
+      if (s === "done") return "bg-secondary";
+      if (s === "hold") return "bg-danger";
+      return "bg-warning text-dark";
+    }
+
+    function stopStatusBadge(stopStatus){
+      if (stopStatus === "done") return { cls:"bg-success", text:"STOP完了" };
+      if (stopStatus === "partial") return { cls:"bg-primary", text:"進行中" };
+      return { cls:"bg-warning text-dark", text:"未完了" };
+    }
+
+    function loadJson(key, fallback){
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+      } catch {
+        return fallback;
+      }
+    }
+    function saveJson(key, value){
+      localStorage.setItem(key, JSON.stringify(value));
+    }
+
+    /********************
+     * Master data
+     ********************/
+    function ensureMasterData(){
+      const branches = loadJson(STORAGE_BRANCHES_KEY, null);
+      const dests    = loadJson(STORAGE_DESTS_KEY, null);
+      const pickups  = loadJson(STORAGE_PICKUPS_KEY, null);
+      if (branches && dests && pickups) return;
+
+      const BR = [
+        { id:"br_komatsu", name:"こまつ営業所" },
+        { id:"br_obuse",  name:"小布施営業所" },
+        { id:"br_kanto",  name:"関東営業所" },
+        { id:"br_anjyo",  name:"安城営業所" },
+      ];
+
+      const DE = [
+        { id:"dst_obuse_dc",   name:"小布施DC",   branch_id:"br_obuse" },
+        { id:"dst_kanto_ddc",  name:"関東DDC",    branch_id:"br_kanto" },
+        { id:"dst_anjyo",      name:"安城営業所", branch_id:"br_anjyo" },
+        { id:"dst_awazu",      name:"粟津工場",   branch_id:"br_komatsu" },
+        { id:"dst_chiba",      name:"千葉センター", branch_id:"br_kanto" },
+      ];
+
+      const PU = [
+        { id:"pu_kowa_2",  name:"興和工業所 2", allowed_destination_ids:["dst_obuse_dc","dst_kanto_ddc","dst_awazu"] },
+        { id:"pu_goto_1",  name:"後藤鉄工 1",   allowed_destination_ids:["dst_anjyo","dst_kanto_ddc"] },
+        { id:"pu_soda_3",  name:"曽田製作所 3", allowed_destination_ids:["dst_awazu","dst_kanto_ddc"] },
+        { id:"pu_oo_4",    name:"〇〇株式会社 4", allowed_destination_ids:["dst_chiba","dst_kanto_ddc"] },
+      ];
+
+      saveJson(STORAGE_BRANCHES_KEY, BR);
+      saveJson(STORAGE_DESTS_KEY, DE);
+      saveJson(STORAGE_PICKUPS_KEY, PU);
+    }
+
+    function getBranchById(id){ return loadJson(STORAGE_BRANCHES_KEY, []).find(x=>x.id===id); }
+    function getDestById(id){ return loadJson(STORAGE_DESTS_KEY, []).find(x=>x.id===id); }
+    function getPickupById(id){ return loadJson(STORAGE_PICKUPS_KEY, []).find(x=>x.id===id); }
+
+    /********************
+     * Stops generator (1000件)
+     ********************/
+    function makeStopsForDate(date){
+      const pickups = loadJson(STORAGE_PICKUPS_KEY, []);
+      const dests = loadJson(STORAGE_DESTS_KEY, []);
+      const stops = [];
+
+      const allowedMap = new Map();
+      pickups.forEach(p=>{
+        allowedMap.set(p.id, new Set(p.allowed_destination_ids || []));
+      });
+
+      const extendedPickups = pickups.slice();
+      const EXTRA_PICKUPS = 60;
+      for (let i=1; i<=EXTRA_PICKUPS; i++){
+        const base = pickups[i % pickups.length];
+        extendedPickups.push({
+          id: `pu_extra_${i}`,
+          name: `ダミー荷主 ${pad2(i)}`,
+          allowed_destination_ids: base?.allowed_destination_ids?.slice() || dests.map(d=>d.id)
+        });
+        allowedMap.set(`pu_extra_${i}`, new Set(extendedPickups[extendedPickups.length-1].allowed_destination_ids));
+      }
+
+      const TARGET = 1000;
+
+      const startMin = 5*60;
+      const endMin = 19*60 - 1;
+
+      for (let i=0; i<TARGET; i++){
+        const pu = extendedPickups[i % extendedPickups.length];
+
+        const allowed = Array.from(allowedMap.get(pu.id) || []);
+        const dstId = allowed.length
+          ? allowed[i % allowed.length]
+          : dests[i % dests.length].id;
+
+        const minuteOfDay = startMin + (i * 7) % (endMin - startMin + 1);
+        const hh = Math.floor(minuteOfDay / 60);
+        const mm = minuteOfDay % 60;
+        const pickup_time = `${pad2(hh)}:${pad2(mm)}`;
+
+        const qty = 1 + (i % 18);
+        const weight = 50 + ((i * 37) % 950);
+
+        stops.push({
+          id: `stop_${date}_${i}`,
+          date,
+          pickup_id: pu.id,
+          destination_id: dstId,
+          pickup_time,
+          qty,
+          weight_kg: weight
+        });
+      }
+
+      stops.push({
+        id: `stop_exp_kowa2_obuse_${date}`,
+        date,
+        pickup_id: "pu_kowa_2",
+        destination_id: "dst_obuse_dc",
+        pickup_time: "10:30",
+        qty: 8,
+        weight_kg: 560
+      });
+
+      return stops;
+    }
+
+    /********************
+     * Initial assignments (軽量化: 30%だけ初期割当)
+     ********************/
+    function makeInitialAssignments(date, stops){
+      const assigns = [];
+      const pickD = (idx)=>DRIVERS[idx % DRIVERS.length].id;
+
+      stops.forEach((s, i)=>{
+        const r = i % 10;
+
+        if (r <= 6) return;
+
+        assigns.push({
+          id: uuidLike("as"),
+          date,
+          stop_id: s.id,
+          driver_id: pickD(i),
+          role: "primary",
+          task_qty: null,
+          task_weight_kg: null,
+          status: (i % 23 === 0) ? "done" : "todo",
+          done_at: (i % 23 === 0) ? new Date().toISOString() : null,
+          note: ""
+        });
+
+        if (r === 9){
+          assigns.push({
+            id: uuidLike("as"),
+            date,
+            stop_id: s.id,
+            driver_id: pickD(i+1),
+            role: "helper",
+            task_qty: null,
+            task_weight_kg: null,
+            status: (i % 41 === 0) ? "done" : "todo",
+            done_at: (i % 41 === 0) ? new Date().toISOString() : null,
+            note: ""
+          });
+        }
+      });
+
+      return assigns;
+    }
+
+    function computeStopStatus(stopId, assignments){
+      const list = assignments.filter(a=>a.stop_id===stopId);
+      if (list.length===0) return "open";
+      const anyDone = list.some(a=>a.status==="done");
+      const allDone = list.every(a=>a.status==="done");
+      if (allDone) return "done";
+      if (anyDone) return "partial";
+      return "open";
+    }
+
+    /********************
+     * State
+     ********************/
+    let STATE = {
+      date: todayStr(),
+      query: "",
+      expandedDriverId: null,
+      stopQuery: "",
+      selectedStopId: null,
+      draftAssignments: [],
+      branchSearch: "",
+      branchExpanded: {},
+      destExpanded: {},
+    };
+
+    /********************
+     * DOM refs
+     ********************/
+    const dateInput = document.getElementById("dateInput");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const metaText = document.getElementById("metaText");
+
+    const searchInput = document.getElementById("searchInput");
+    const summaryBadges = document.getElementById("summaryBadges");
+    const countText = document.getElementById("countText");
+    const driversTbody = document.getElementById("driversTbody");
+    const logList = document.getElementById("logList");
+    const clearLogBtn = document.getElementById("clearLogBtn");
+
+    const stopSearchInput = document.getElementById("stopSearchInput");
+    const stopsList = document.getElementById("stopsList");
+    const issuerInput = document.getElementById("issuerInput");
+
+    const selectedStopCard = document.getElementById("selectedStopCard");
+    const selStopTitle = document.getElementById("selStopTitle");
+    const selStopSub = document.getElementById("selStopSub");
+    const selStopStatusBadge = document.getElementById("selStopStatusBadge");
+
+    const driverSelect = document.getElementById("driverSelect");
+    const roleSelect = document.getElementById("roleSelect");
+    const taskQtyInput = document.getElementById("taskQtyInput");
+    const taskWeightInput = document.getElementById("taskWeightInput");
+    const addAssignBtn = document.getElementById("addAssignBtn");
+    const clearDraftBtn = document.getElementById("clearDraftBtn");
+
+    const draftList = document.getElementById("draftList");
+    const instructionText = document.getElementById("instructionText");
+    const previewBtn = document.getElementById("previewBtn");
+    const issueBtn = document.getElementById("issueBtn");
+    const currentAssignList = document.getElementById("currentAssignList");
+
+    const branchSummarySearch = document.getElementById("branchSummarySearch");
+    const expandAllBranchBtn = document.getElementById("expandAllBranchBtn");
+    const collapseAllBranchBtn = document.getElementById("collapseAllBranchBtn");
+    const branchKpis = document.getElementById("branchKpis");
+    const branchSummaryList = document.getElementById("branchSummaryList");
+
+    /********************
+     * Date-scoped data access
+     ********************/
+    function getStopsForDate(){
+      const all = loadJson(STORAGE_STOPS_KEY, []);
+      return all.filter(s=>s.date===STATE.date);
+    }
+    function getAssignmentsForDate(){
+      const all = loadJson(STORAGE_ASSIGN_KEY, []);
+      return all.filter(a=>a.date===STATE.date);
+    }
+    function saveAssignmentsForDate(assignsForDate){
+      const all = loadJson(STORAGE_ASSIGN_KEY, []);
+      const rest = all.filter(a=>a.date!==STATE.date);
+      saveJson(STORAGE_ASSIGN_KEY, rest.concat(assignsForDate));
+    }
+    function getLogs(){
+      return loadJson(STORAGE_LOG_KEY, []);
+    }
+    function saveLogs(logs){
+      saveJson(STORAGE_LOG_KEY, logs);
+    }
+
+    /********************
+     * Enrich stop with pickup/destination/branch names
+     ********************/
+    function enrichStop(stop){
+      const pickup = getPickupById(stop.pickup_id) || {name:"(不明pickup)"};
+      const dest = getDestById(stop.destination_id) || {name:"(不明dest)", branch_id:null};
+      const br = dest.branch_id ? (getBranchById(dest.branch_id) || {name:"(不明営業所)"}) : {name:"(営業所なし)"};
+      return {
+        ...stop,
+        pickup_name: pickup.name,
+        destination_name: dest.name,
+        branch_id: dest.branch_id,
+        branch_name: br.name
+      };
+    }
+
+    /********************
+     * Ensure data exists
+     ********************/
+    function ensureDataForDate(){
+      ensureMasterData();
+
+      const allStops = loadJson(STORAGE_STOPS_KEY, []);
+      const hasStops = allStops.some(s=>s.date===STATE.date);
+      if (!hasStops){
+        const newStops = makeStopsForDate(STATE.date);
+        saveJson(STORAGE_STOPS_KEY, allStops.concat(newStops));
+      }
+
+      const allAssign = loadJson(STORAGE_ASSIGN_KEY, []);
+      const hasAssign = allAssign.some(a=>a.date===STATE.date);
+      if (!hasAssign){
+        const stops = getStopsForDate();
+        const initA = makeInitialAssignments(STATE.date, stops);
+        saveJson(STORAGE_ASSIGN_KEY, allAssign.concat(initA));
+      }
+    }
+
+    /********************
+     * Render: logs
+     ********************/
+    function renderLogPanel(){
+      const logs = getLogs().slice().reverse().filter(l=>l.date===STATE.date);
+      logList.innerHTML = "";
+      if (logs.length===0){
+        logList.innerHTML = `<div class="text-secondary small">指示ログはありません。配車タブで指示を発行してください。</div>`;
+        return;
+      }
+      logs.forEach(l=>{
+        const issuer = l.issuer ? `（指示者: ${escapeHtml(l.issuer)}）` : "";
+        const card = document.createElement("div");
+        card.className = "card border-0 shadow-sm";
+        card.innerHTML = `
+          <div class="card-body py-3">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div class="fw-bold">
+                <span class="badge bg-primary smallcap me-2">DISPATCH</span>
+                ${escapeHtml(l.title)}
+              </div>
+              <div class="text-secondary small mono">${new Date(l.at).toLocaleString("ja-JP")}</div>
+            </div>
+            <div class="text-secondary small mt-1">
+              対象日: <span class="mono">${escapeHtml(l.date)}</span> / 割当追加: <span class="mono">${l.addedCount}</span>件 ${issuer}
+            </div>
+            <div class="mt-2 small" style="white-space:pre-wrap;">${escapeHtml(l.note||"")}</div>
+          </div>
+        `;
+        logList.appendChild(card);
+      });
+    }
+
+    /********************
+     * Dashboard aggregation
+     ********************/
+    function groupAssignmentsByDriver(assignments, stopsEnriched, query){
+      const q = (query||"").trim().toLowerCase();
+      const map = new Map();
+
+      DRIVERS.forEach(d=>{
+        if (q && !d.name.toLowerCase().includes(q)) return;
+        map.set(d.id, { driverId:d.id, driverName:d.name, items:[], total:0, todo:0, done:0, hold:0, lastDoneAt:null });
+      });
+
+      assignments.forEach(a=>{
+        const row = map.get(a.driver_id);
+        if (!row) return;
+        row.items.push(a);
+        row.total++;
+        if (a.status==="done") row.done++;
+        else if (a.status==="hold") row.hold++;
+        else row.todo++;
+
+        if (a.done_at){
+          const t = new Date(a.done_at).getTime();
+          if (!row.lastDoneAt || t>row.lastDoneAt) row.lastDoneAt=t;
+        }
+      });
+
+      map.forEach(r=>{
+        r.items = r.items
+          .map(a => ({...a, stop: stopsEnriched.find(s=>s.id===a.stop_id)}))
+          .sort((x,y)=> (x.stop?.pickup_time||"").localeCompare(y.stop?.pickup_time||""));
+      });
+
+      return Array.from(map.values()).sort((a,b)=>a.driverName.localeCompare(b.driverName,"ja"));
+    }
+
+    function computeSummary(stopsEnriched, assignments){
+      let stopDone=0, stopPartial=0, stopOpen=0;
+      stopsEnriched.forEach(s=>{
+        const st = computeStopStatus(s.id, assignments);
+        if (st==="done") stopDone++;
+        else if (st==="partial") stopPartial++;
+        else stopOpen++;
+      });
+
+      let aTodo=0, aDone=0, aHold=0;
+      assignments.forEach(a=>{
+        if (a.status==="done") aDone++;
+        else if (a.status==="hold") aHold++;
+        else aTodo++;
+      });
+
+      return { stopDone, stopPartial, stopOpen, aTodo, aDone, aHold, stopsTotal:stopsEnriched.length, assignsTotal:assignments.length };
+    }
+
+    function setAssignmentStatus(assignId, status){
+      const assigns = getAssignmentsForDate();
+      const idx = assigns.findIndex(a=>a.id===assignId);
+      if (idx<0) return;
+      assigns[idx].status = status;
+      assigns[idx].done_at = (status==="done") ? new Date().toISOString() : null;
+      saveAssignmentsForDate(assigns);
+      renderAll();
+    }
+
+    function renderDashboard(){
+      metaText.textContent = `同期: OK / 最終更新: ${nowHM()} / 共有: localStorage`;
+
+      const stopsEnriched = getStopsForDate().map(enrichStop);
+      const assignments = getAssignmentsForDate();
+
+      const sum = computeSummary(stopsEnriched, assignments);
+      summaryBadges.innerHTML = `
+        <span class="badge bg-dark">STOP ${sum.stopsTotal}</span>
+        <span class="badge bg-success">STOP完了 ${sum.stopDone}</span>
+        <span class="badge bg-primary">進行中 ${sum.stopPartial}</span>
+        <span class="badge bg-warning text-dark">未完了 ${sum.stopOpen}</span>
+        <span class="badge bg-secondary">割当完了 ${sum.aDone}</span>
+        <span class="badge bg-warning text-dark">割当未完了 ${sum.aTodo}</span>
+        <span class="badge bg-danger">割当保留 ${sum.aHold}</span>
+      `;
+
+      const drivers = groupAssignmentsByDriver(assignments, stopsEnriched, STATE.query);
+      countText.textContent = `表示: ${drivers.length}名`;
+
+      driversTbody.innerHTML = "";
+      drivers.forEach(d=>{
+        const isOpen = STATE.expandedDriverId === d.driverId;
+
+        const tr = document.createElement("tr");
+        tr.className = "row-click";
+        tr.dataset.driverId = d.driverId;
+        tr.innerHTML = `
+          <td class="fw-semibold">
+            ${escapeHtml(d.driverName)}
+            ${d.todo>0 ? `<span class="ms-2 badge bg-warning text-dark">要対応</span>` : `<span class="ms-2 badge bg-success">OK</span>`}
+          </td>
+          <td class="text-end mono">${d.todo}</td>
+          <td class="text-end mono">${d.done}</td>
+          <td class="text-end mono">${d.hold}</td>
+          <td class="text-end mono">${d.total}</td>
+          <td class="text-end mono">${d.lastDoneAt ? new Date(d.lastDoneAt).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}) : "-"}</td>
+        `;
+        driversTbody.appendChild(tr);
+
+        if (isOpen){
+          const tr2 = document.createElement("tr");
+          const td = document.createElement("td");
+          td.colSpan = 6;
+          td.className = "expanded-cell";
+
+          if (d.items.length===0){
+            td.innerHTML = `<div class="text-secondary small py-2">割当はありません。</div>`;
+          } else {
+            const wrap = document.createElement("div");
+            wrap.className = "vstack gap-2 py-2";
+
+            d.items.forEach(a=>{
+              const s = a.stop || {};
+              const stopSt = computeStopStatus(a.stop_id, assignments);
+              const sb = stopStatusBadge(stopSt);
+
+              const co = assignments
+                .filter(x=>x.stop_id===a.stop_id)
+                .map(x=>`${driverName(x.driver_id)}(${x.role}:${statusLabel(x.status)})`)
+                .join(" / ");
+
+              const card = document.createElement("div");
+              card.className = "card border-0 shadow-sm";
+              card.innerHTML = `
+                <div class="card-body py-3">
+                  <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div class="fw-bold">
+                      <span class="mono me-2">${escapeHtml(s.pickup_time||"--:--")}</span>
+                      <span class="pill me-2">集荷先</span>${escapeHtml(s.pickup_name||"(不明)")}
+                      <div class="text-secondary small mt-1">
+                        <span class="pill me-2">送付先</span>${escapeHtml(s.destination_name||"(不明)")}
+                        <span class="pill ms-2">営業所 ${escapeHtml(s.branch_name||"-")}</span>
+                        <span class="pill ms-2">数量 ${escapeHtml(s.qty??"-")}</span>
+                        <span class="pill ms-1">重量 ${escapeHtml(s.weight_kg??"-")}kg</span>
+                      </div>
+                    </div>
+                    <div class="text-end">
+                      <span class="badge ${sb.cls}">${sb.text}</span>
+                      <span class="badge ${statusBadgeClass(a.status)} ms-2">${statusLabel(a.status)}</span>
+                    </div>
+                  </div>
+
+                  <div class="text-secondary small mt-2">
+                    あなたの割当：<span class="pill">${escapeHtml(a.role)}</span>
+                    ${a.task_qty!=null ? `<span class="pill">分割 数量 ${escapeHtml(a.task_qty)}</span>` : ``}
+                    ${a.task_weight_kg!=null ? `<span class="pill">分割 重量 ${escapeHtml(a.task_weight_kg)}kg</span>` : ``}
+                  </div>
+
+                  <div class="text-secondary small mt-1">
+                    共同担当：${escapeHtml(co)}
+                  </div>
+
+                  <div class="d-flex gap-2 mt-2">
+                    <button class="btn btn-sm btn-success" data-action="assignDone" data-assign-id="${a.id}" ${a.status==="done"?"disabled":""}>
+                      この割当を完了（デモ）
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" data-action="assignHold" data-assign-id="${a.id}">
+                      保留（デモ）
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" data-action="assignTodo" data-assign-id="${a.id}">
+                      未完了へ戻す（デモ）
+                    </button>
+                  </div>
+                </div>
+              `;
+              wrap.appendChild(card);
+            });
+
+            td.appendChild(wrap);
+          }
+
+          tr2.appendChild(td);
+          driversTbody.appendChild(tr2);
+        }
+      });
+
+      renderLogPanel();
+    }
+
+    /********************
+     * Dispatch render
+     ********************/
+    function renderStopsList(){
+      const stopsEnriched = getStopsForDate().map(enrichStop);
+      const assignments = getAssignmentsForDate();
+      const q = (STATE.stopQuery||"").trim().toLowerCase();
+
+      const list = stopsEnriched.filter(s=>{
+        if (!q) return true;
+        return (
+          (s.pickup_name||"").toLowerCase().includes(q) ||
+          (s.destination_name||"").toLowerCase().includes(q) ||
+          (s.branch_name||"").toLowerCase().includes(q)
+        );
+      });
+
+      stopsList.innerHTML = "";
+      if (list.length===0){
+        stopsList.innerHTML = `<div class="text-secondary small">該当stopがありません。</div>`;
+        return;
+      }
+
+      list
+        .slice()
+        .sort((a,b)=> (a.pickup_time||"").localeCompare(b.pickup_time||""))
+        .forEach(s=>{
+          const st = computeStopStatus(s.id, assignments);
+          const sb = stopStatusBadge(st);
+          const assignedCount = assignments.filter(a=>a.stop_id===s.id).length;
+
+          const card = document.createElement("div");
+          card.className = `card border-0 shadow-sm card-clickable ${
+            st==="done" ? "soft-success" : st==="partial" ? "soft-warn" : ""
+          }`;
+          card.dataset.stopId = s.id;
+
+          card.innerHTML = `
+            <div class="card-body py-3">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="fw-bold">
+                  <span class="mono me-2">${escapeHtml(s.pickup_time)}</span>
+                  <span class="pill me-2">集荷先</span>${escapeHtml(s.pickup_name)}
+                </div>
+                <span class="badge ${sb.cls}">${sb.text}</span>
+              </div>
+              <div class="text-secondary small mt-1">
+                <span class="pill me-2">送付先</span>${escapeHtml(s.destination_name)}
+                <span class="pill ms-2">営業所 ${escapeHtml(s.branch_name)}</span>
+                <span class="ms-2 pill text-secondary">割当 ${assignedCount}件</span>
+              </div>
+              <div class="text-secondary small mt-1">
+                数量: <span class="mono">${escapeHtml(s.qty)}</span> / 重量: <span class="mono">${escapeHtml(s.weight_kg)}</span>kg
+              </div>
+            </div>
+          `;
+          stopsList.appendChild(card);
+        });
+    }
+
+    function renderSelectedStopHeader(){
+      const stopsEnriched = getStopsForDate().map(enrichStop);
+      const assignments = getAssignmentsForDate();
+      const stop = stopsEnriched.find(s=>s.id===STATE.selectedStopId);
+
+      if (!stop){
+        selectedStopCard.style.display = "none";
+        addAssignBtn.disabled = true;
+        clearDraftBtn.disabled = true;
+        previewBtn.disabled = true;
+        issueBtn.disabled = true;
+        return;
+      }
+
+      selectedStopCard.style.display = "";
+      selStopTitle.textContent = `${stop.pickup_time} 集荷先: ${stop.pickup_name}`;
+      selStopSub.textContent = `送付先: ${stop.destination_name}（営業所: ${stop.branch_name}） / 数量:${stop.qty} / 重量:${stop.weight_kg}kg`;
+
+      const st = computeStopStatus(stop.id, assignments);
+      const sb = stopStatusBadge(st);
+      selStopStatusBadge.className = `badge ${sb.cls}`;
+      selStopStatusBadge.textContent = sb.text;
+
+      addAssignBtn.disabled = false;
+      clearDraftBtn.disabled = STATE.draftAssignments.length===0;
+      previewBtn.disabled = STATE.draftAssignments.length===0;
+      issueBtn.disabled = STATE.draftAssignments.length===0;
+    }
+
+    function renderDraftList(){
+      draftList.innerHTML = "";
+      if (STATE.draftAssignments.length===0){
+        draftList.innerHTML = `<div class="text-secondary small">下書きはありません（割当を追加してください）。</div>`;
+        return;
+      }
+
+      STATE.draftAssignments.forEach((a, idx)=>{
+        const div = document.createElement("div");
+        div.className = "card border-0 shadow-sm";
+        div.innerHTML = `
+          <div class="card-body py-2">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div class="fw-semibold">
+                ${escapeHtml(driverName(a.driver_id))} <span class="pill">${escapeHtml(a.role)}</span>
+                ${a.task_qty!=null ? `<span class="pill">分割 数量 ${escapeHtml(a.task_qty)}</span>` : ``}
+                ${a.task_weight_kg!=null ? `<span class="pill">分割 重量 ${escapeHtml(a.task_weight_kg)}kg</span>` : ``}
+              </div>
+              <button class="btn btn-sm btn-outline-danger" data-action="removeDraft" data-idx="${idx}">削除</button>
+            </div>
+            <div class="text-secondary small mt-1">
+              status: <span class="badge ${statusBadgeClass("todo")}">${statusLabel("todo")}</span>
+            </div>
+          </div>
+        `;
+        draftList.appendChild(div);
+      });
+    }
+
+    function renderDispatchCurrentAssignments(){
+      const assignments = getAssignmentsForDate();
+      const stopsEnriched = getStopsForDate().map(enrichStop);
+      const stop = stopsEnriched.find(s=>s.id===STATE.selectedStopId);
+
+      if (!stop){
+        currentAssignList.innerHTML = `<div class="text-secondary small">stopを選択すると表示されます。</div>`;
+        return;
+      }
+
+      const list = assignments.filter(a=>a.stop_id===stop.id);
+      if (list.length===0){
+        currentAssignList.innerHTML = `<div class="text-secondary small">割当はまだありません。</div>`;
+        return;
+      }
+
+      const st = computeStopStatus(stop.id, assignments);
+      const sb = stopStatusBadge(st);
+
+      const header = document.createElement("div");
+      header.className = "d-flex flex-wrap gap-2 align-items-center mb-1";
+      header.innerHTML = `
+        <span class="badge ${sb.cls}">${sb.text}</span>
+        <span class="text-secondary small">（このstopの割当が全部doneで完了：Rule B）</span>
+      `;
+
+      const wrap = document.createElement("div");
+      wrap.className = "vstack gap-2";
+
+      list.forEach(a=>{
+        const card = document.createElement("div");
+        card.className = `card border-0 shadow-sm ${a.status==="hold" ? "soft-danger" : ""}`;
+        card.innerHTML = `
+          <div class="card-body py-2">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div class="fw-semibold">
+                ${escapeHtml(driverName(a.driver_id))} <span class="pill">${escapeHtml(a.role)}</span>
+                ${a.task_qty!=null ? `<span class="pill">分割 数量 ${escapeHtml(a.task_qty)}</span>` : ``}
+                ${a.task_weight_kg!=null ? `<span class="pill">分割 重量 ${escapeHtml(a.task_weight_kg)}kg</span>` : ``}
+              </div>
+              <span class="badge ${statusBadgeClass(a.status)}">${statusLabel(a.status)}</span>
+            </div>
+            <div class="text-secondary small mt-1">
+              done_at: <span class="mono">${a.done_at ? new Date(a.done_at).toLocaleString("ja-JP") : "-"}</span>
+            </div>
+          </div>
+        `;
+        wrap.appendChild(card);
+      });
+
+      currentAssignList.innerHTML = "";
+      currentAssignList.appendChild(header);
+      currentAssignList.appendChild(wrap);
+    }
+
+    function buildInstructionPreview(){
+      const stopsEnriched = getStopsForDate().map(enrichStop);
+      const stop = stopsEnriched.find(s=>s.id===STATE.selectedStopId);
+      if (!stop) return "";
+
+      const lines = [];
+      lines.push(`【配車指示】${stop.pickup_time} 集荷先:${stop.pickup_name}`);
+      lines.push(`対象日：${STATE.date}`);
+      lines.push(`送付先：${stop.destination_name}（営業所:${stop.branch_name}）`);
+      lines.push(`数量：${stop.qty} / 重量：${stop.weight_kg}kg`);
+      lines.push(`割当追加：${STATE.draftAssignments.length}件`);
+      lines.push(`内容：`);
+      STATE.draftAssignments.forEach((a,i)=>{
+        lines.push(`  ${i+1}. ${driverName(a.driver_id)} / role=${a.role}` +
+          (a.task_qty!=null ? ` / 分割qty=${a.task_qty}` : ``) +
+          (a.task_weight_kg!=null ? ` / 分割weight=${a.task_weight_kg}kg` : ``)
+        );
+      });
+      lines.push(`備考：上から順に実施。イレギュラーは事務所へ連絡。`);
+      return lines.join("\n");
+    }
+
+    function isDuplicateAssignment(stopId, driverId, existing, drafts){
+      return [...existing, ...drafts].some(a=>a.stop_id===stopId && a.driver_id===driverId);
+    }
+
+    /********************
+     * Branch summary aggregation
+     ********************/
+    function buildBranchSummary(stopsEnriched){
+      const branches = new Map();
+
+      stopsEnriched.forEach(s=>{
+        const brId = s.branch_id || "br_unknown";
+        const brName = s.branch_name || "(営業所不明)";
+        if (!branches.has(brId)){
+          branches.set(brId, { branch_id: brId, branch_name: brName, total_qty:0, total_weight:0, destinations: new Map() });
+        }
+        const br = branches.get(brId);
+        br.total_qty += Number(s.qty||0);
+        br.total_weight += Number(s.weight_kg||0);
+
+        const destId = s.destination_id || "dst_unknown";
+        const destName = s.destination_name || "(送付先不明)";
+        if (!br.destinations.has(destId)){
+          br.destinations.set(destId, { dest_id: destId, dest_name: destName, total_qty:0, total_weight:0, pickups: new Map() });
+        }
+        const de = br.destinations.get(destId);
+        de.total_qty += Number(s.qty||0);
+        de.total_weight += Number(s.weight_kg||0);
+
+        const puId = s.pickup_id || "pu_unknown";
+        const puName = s.pickup_name || "(荷主不明)";
+        if (!de.pickups.has(puId)){
+          de.pickups.set(puId, { pickup_id: puId, pickup_name: puName, total_qty:0, total_weight:0 });
+        }
+        const pu = de.pickups.get(puId);
+        pu.total_qty += Number(s.qty||0);
+        pu.total_weight += Number(s.weight_kg||0);
+      });
+
+      const out = Array.from(branches.values()).map(br=>{
+        const dests = Array.from(br.destinations.values()).map(de=>{
+          const pus = Array.from(de.pickups.values()).sort((a,b)=>b.total_weight-a.total_weight);
+          return { ...de, pickups: pus };
+        }).sort((a,b)=>b.total_weight-a.total_weight);
+        return { ...br, destinations: dests };
+      }).sort((a,b)=>b.total_weight-a.total_weight);
+
+      return out;
+    }
+
+    function renderBranchSummary(){
+      const q = (STATE.branchSearch||"").trim().toLowerCase();
+      const stopsEnrichedAll = getStopsForDate().map(enrichStop);
+
+      const totalStops = stopsEnrichedAll.length;
+      const totalQty = stopsEnrichedAll.reduce((acc,s)=>acc+Number(s.qty||0),0);
+      const totalWeight = stopsEnrichedAll.reduce((acc,s)=>acc+Number(s.weight_kg||0),0);
+
+      branchKpis.innerHTML = `
+        <div class="kpi"><span class="label">STOP</span><span class="value mono">${totalStops}</span></div>
+        <div class="kpi"><span class="label">合計数量</span><span class="value mono">${totalQty}</span></div>
+        <div class="kpi"><span class="label">合計重量(kg)</span><span class="value mono">${totalWeight}</span></div>
+      `;
+
+      const summary = buildBranchSummary(stopsEnrichedAll);
+
+      const filtered = summary
+        .map(br=>{
+          const dests = br.destinations
+            .map(de=>{
+              const pus = de.pickups.filter(pu=>{
+                if (!q) return true;
+                return (
+                  br.branch_name.toLowerCase().includes(q) ||
+                  de.dest_name.toLowerCase().includes(q) ||
+                  pu.pickup_name.toLowerCase().includes(q)
+                );
+              });
+              if (!q) return de;
+              const matchSelf = br.branch_name.toLowerCase().includes(q) || de.dest_name.toLowerCase().includes(q);
+              if (matchSelf) return de;
+              return { ...de, pickups: pus };
+            })
+            .filter(de=>{
+              if (!q) return true;
+              const matchSelf = br.branch_name.toLowerCase().includes(q) || de.dest_name.toLowerCase().includes(q);
+              return matchSelf || (de.pickups && de.pickups.length>0);
+            });
+
+          if (!q) return br;
+          const matchBranch = br.branch_name.toLowerCase().includes(q);
+          if (matchBranch) return br;
+          return { ...br, destinations: dests };
+        })
+        .filter(br=>{
+          if (!q) return true;
+          const matchBranch = br.branch_name.toLowerCase().includes(q);
+          return matchBranch || (br.destinations && br.destinations.length>0);
+        });
+
+      branchSummaryList.innerHTML = "";
+      if (filtered.length===0){
+        branchSummaryList.innerHTML = `<div class="text-secondary small">該当データがありません。</div>`;
+        return;
+      }
+
+      filtered.forEach(br=>{
+        const brOpen = STATE.branchExpanded[br.branch_id] ?? true;
+
+        const brCard = document.createElement("div");
+        brCard.className = "card border-0 shadow-sm";
+        brCard.innerHTML = `
+          <div class="card-body py-3">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div class="fw-bold">
+                <button class="btn btn-sm btn-outline-primary me-2" data-action="toggleBranch" data-branch-id="${br.branch_id}">
+                  ${brOpen ? "－" : "＋"}
+                </button>
+                営業所：${escapeHtml(br.branch_name)}
+              </div>
+              <div class="text-end">
+                <span class="pill">合計数量 <span class="mono">${br.total_qty}</span></span>
+                <span class="pill ms-2">合計重量 <span class="mono">${br.total_weight}</span>kg</span>
+              </div>
+            </div>
+            <div class="text-secondary small mt-2">
+              ※送付先ごとの合計重量（kg）を表示。さらに展開で荷主別内訳（数量/重量）が見られます。
+            </div>
+            <div class="mt-2" data-branch-body="${br.branch_id}" style="${brOpen ? "" : "display:none;"}"></div>
+          </div>
+        `;
+
+        const body = brCard.querySelector(`[data-branch-body="${br.branch_id}"]`);
+        const destTable = document.createElement("div");
+        destTable.className = "table-responsive";
+        destTable.innerHTML = `
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr class="text-secondary small">
+                <th style="width:44%">送付先（Destination）</th>
+                <th style="width:18%" class="text-end">合計数量</th>
+                <th style="width:18%" class="text-end">合計重量(kg)</th>
+                <th style="width:20%" class="text-end">荷主内訳</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        `;
+
+        const tbody = destTable.querySelector("tbody");
+        br.destinations.forEach(de=>{
+          const deOpen = STATE.destExpanded[de.dest_id] ?? false;
+
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td class="fw-semibold">
+              <button class="btn btn-sm btn-outline-secondary me-2" data-action="toggleDest" data-dest-id="${de.dest_id}">
+                ${deOpen ? "－" : "＋"}
+              </button>
+              ${escapeHtml(de.dest_name)}
+            </td>
+            <td class="text-end mono">${de.total_qty}</td>
+            <td class="text-end mono">${de.total_weight}</td>
+            <td class="text-end">
+              <span class="pill">${de.pickups.length}荷主</span>
+            </td>
+          `;
+          tbody.appendChild(tr);
+
+          if (deOpen){
+            const tr2 = document.createElement("tr");
+            tr2.innerHTML = `<td colspan="4" class="expanded-cell"></td>`;
+            const td = tr2.querySelector("td");
+
+            const inner = document.createElement("div");
+            inner.className = "table-responsive";
+            inner.innerHTML = `
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr class="text-secondary small">
+                    <th style="width:52%">荷主（集荷先 / Pickup）</th>
+                    <th style="width:24%" class="text-end">合計数量</th>
+                    <th style="width:24%" class="text-end">合計重量(kg)</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            `;
+            const itb = inner.querySelector("tbody");
+
+            de.pickups
+              .slice()
+              .sort((a,b)=>b.total_weight-a.total_weight)
+              .forEach(pu=>{
+                const r = document.createElement("tr");
+                r.innerHTML = `
+                  <td>${escapeHtml(pu.pickup_name)}</td>
+                  <td class="text-end mono">${pu.total_qty}</td>
+                  <td class="text-end mono">${pu.total_weight}</td>
+                `;
+                itb.appendChild(r);
+              });
+
+            td.appendChild(inner);
+            tbody.appendChild(tr2);
+          }
+        });
+
+        body.appendChild(destTable);
+        branchSummaryList.appendChild(brCard);
+      });
+    }
+
+    /********************
+     * Dispatch render helper
+     ********************/
+    function renderDispatch(){
+      renderStopsList();
+      renderSelectedStopHeader();
+      renderDraftList();
+      renderDispatchCurrentAssignments();
+    }
+
+    /********************
+     * Init driver select
+     ********************/
+    function initDriverSelect(){
+      driverSelect.innerHTML = "";
+      DRIVERS.forEach(d=>{
+        const opt = document.createElement("option");
+        opt.value = d.id;
+        opt.textContent = d.name;
+        driverSelect.appendChild(opt);
+      });
+    }
+
+    /********************
+     * Render all
+     ********************/
+    function renderAll(){
+      ensureDataForDate();
+      renderDashboard();
+      renderDispatch();
+      renderBranchSummary();
+
+      clearDraftBtn.disabled = STATE.draftAssignments.length===0;
+      previewBtn.disabled = STATE.draftAssignments.length===0;
+      issueBtn.disabled = STATE.draftAssignments.length===0;
+    }
+
+    /********************
+     * Entry tab (Natural Input)
+     ********************/
+    const entryPickup = document.getElementById("entryPickup");
+    const entryDestination = document.getElementById("entryDestination");
+    const entryBranchHint = document.getElementById("entryBranchHint");
+    const entryTime = document.getElementById("entryTime");
+    const entryQty = document.getElementById("entryQty");
+    const entryWeight = document.getElementById("entryWeight");
+    const entryNote = document.getElementById("entryNote");
+    const entryCreateStopBtn = document.getElementById("entryCreateStopBtn");
+    const entryResetBtn = document.getElementById("entryResetBtn");
+    const entryLastResult = document.getElementById("entryLastResult");
+
+    const entryAddAssignSwitch = document.getElementById("entryAddAssignSwitch");
+    const entryAssignArea = document.getElementById("entryAssignArea");
+    const entryAssignDriver = document.getElementById("entryAssignDriver");
+    const entryAssignRole = document.getElementById("entryAssignRole");
+    const entryAssignQty = document.getElementById("entryAssignQty");
+    const entryAssignWeight = document.getElementById("entryAssignWeight");
+
+    function initEntryDriverSelect(){
+      entryAssignDriver.innerHTML = "";
+      DRIVERS.forEach(d=>{
+        const opt = document.createElement("option");
+        opt.value = d.id;
+        opt.textContent = d.name;
+        entryAssignDriver.appendChild(opt);
+      });
+    }
+
+    function fillEntryPickupOptions(){
+      const pickups = loadJson(STORAGE_PICKUPS_KEY, []);
+      entryPickup.innerHTML = "";
+      pickups.forEach(p=>{
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.name;
+        entryPickup.appendChild(opt);
+      });
+    }
+
+    function fillEntryDestinationOptionsByPickup(pickupId){
+      const pickup = getPickupById(pickupId);
+      const allowed = new Set(pickup?.allowed_destination_ids || []);
+      const dests = loadJson(STORAGE_DESTS_KEY, []);
+
+      entryDestination.innerHTML = "";
+      const list = dests.filter(d=>allowed.size===0 ? true : allowed.has(d.id));
+      list.forEach(d=>{
+        const opt = document.createElement("option");
+        opt.value = d.id;
+        opt.textContent = d.name;
+        entryDestination.appendChild(opt);
+      });
+
+      updateEntryBranchHint();
+    }
+
+    function updateEntryBranchHint(){
+      const dest = getDestById(entryDestination.value);
+      const br = dest?.branch_id ? getBranchById(dest.branch_id) : null;
+      entryBranchHint.textContent = `営業所: ${br?.name || "-"}`;
+    }
+
+    function resetEntryForm(){
+      entryTime.value = "09:00";
+      entryQty.value = 1;
+      entryWeight.value = 50;
+      entryNote.value = "";
+
+      entryAddAssignSwitch.checked = false;
+      entryAssignArea.style.display = "none";
+      entryAssignRole.value = "primary";
+      entryAssignQty.value = "";
+      entryAssignWeight.value = "";
+    }
+
+    function pushEntryResultCard(stopId){
+      const stops = getStopsForDate().map(enrichStop);
+      const s = stops.find(x=>x.id===stopId);
+      if (!s) return;
+
+      const assigns = getAssignmentsForDate().filter(a=>a.stop_id===stopId);
+      const assignText = assigns.length
+        ? assigns.map(a=>`${driverName(a.driver_id)}(${a.role})`).join(" / ")
+        : "割当なし";
+
+      const card = document.createElement("div");
+      card.className = "card border-0 shadow-sm";
+      card.innerHTML = `
+        <div class="card-body py-3">
+          <div class="fw-bold">
+            <span class="mono me-2">${escapeHtml(s.pickup_time)}</span>
+            <span class="pill me-2">集荷先</span>${escapeHtml(s.pickup_name)}
+          </div>
+          <div class="text-secondary small mt-1">
+            <span class="pill me-2">送付先</span>${escapeHtml(s.destination_name)}
+            <span class="pill ms-2">営業所 ${escapeHtml(s.branch_name)}</span>
+          </div>
+          <div class="text-secondary small mt-1">
+            数量: <span class="mono">${escapeHtml(s.qty)}</span> /
+            重量: <span class="mono">${escapeHtml(s.weight_kg)}</span>kg
+          </div>
+          <div class="text-secondary small mt-1">
+            ${entryNote.value.trim() ? `備考: ${escapeHtml(entryNote.value.trim())}<br>` : ""}
+            割当: ${escapeHtml(assignText)}
+          </div>
+          <div class="mt-2">
+            <button class="btn btn-sm btn-outline-primary" data-action="goDispatch" data-stop-id="${s.id}">
+              配車タブでこのSTOPを開く
+            </button>
+          </div>
+        </div>
+      `;
+
+      entryLastResult.innerHTML = "";
+      entryLastResult.appendChild(card);
+    }
+
+    function createStopFromEntry(){
+      const pickupId = entryPickup.value;
+      const destId = entryDestination.value;
+
+      const t = (entryTime.value || "").trim();
+      const qty = Number(entryQty.value);
+      const w = Number(entryWeight.value);
+
+      if (!pickupId || !destId){
+        alert("集荷先と送付先を選択してください。");
+        return;
+      }
+      if (!t){
+        alert("集荷時刻を入力してください。");
+        return;
+      }
+      if (!Number.isFinite(qty) || qty < 0){
+        alert("数量が不正です。");
+        return;
+      }
+      if (!Number.isFinite(w) || w < 0){
+        alert("重量が不正です。");
+        return;
+      }
+
+      const allStops = loadJson(STORAGE_STOPS_KEY, []);
+      const id = `stop_${STATE.date}_manual_${Date.now()}`;
+
+      allStops.push({
+        id,
+        date: STATE.date,
+        pickup_id: pickupId,
+        destination_id: destId,
+        pickup_time: t,
+        qty,
+        weight_kg: w,
+        note: entryNote.value.trim() || ""
+      });
+
+      saveJson(STORAGE_STOPS_KEY, allStops);
+
+      if (entryAddAssignSwitch.checked){
+        const allAssign = loadJson(STORAGE_ASSIGN_KEY, []);
+        allAssign.push({
+          id: uuidLike("as"),
+          date: STATE.date,
+          stop_id: id,
+          driver_id: entryAssignDriver.value,
+          role: entryAssignRole.value,
+          task_qty: entryAssignQty.value.trim()==="" ? null : Number(entryAssignQty.value),
+          task_weight_kg: entryAssignWeight.value.trim()==="" ? null : Number(entryAssignWeight.value),
+          status: "todo",
+          done_at: null,
+          note: ""
+        });
+        saveJson(STORAGE_ASSIGN_KEY, allAssign);
+      }
+
+      renderAll();
+      pushEntryResultCard(id);
+    }
+
+    /********************
+     * Events
+     ********************/
+    dateInput.addEventListener("change", ()=>{
+      STATE.date = dateInput.value || todayStr();
+      ensureDataForDate();
+      STATE.expandedDriverId = null;
+      STATE.stopQuery = "";
+      stopSearchInput.value = "";
+      STATE.selectedStopId = null;
+      STATE.draftAssignments = [];
+      instructionText.value = "";
+      renderAll();
+    });
+
+    refreshBtn.addEventListener("click", ()=>renderAll());
+
+    // dashboard search
+    let tmr=null;
+    searchInput.addEventListener("input", ()=>{
+      clearTimeout(tmr);
+      tmr=setTimeout(()=>{
+        STATE.query = searchInput.value || "";
+        STATE.expandedDriverId = null;
+        renderDashboard();
+      }, 120);
+    });
+
+    // expand driver + assignment buttons
+    driversTbody.addEventListener("click", (e)=>{
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+
+      const actionBtn = t.closest("[data-action]");
+      if (actionBtn){
+        const act = actionBtn.getAttribute("data-action");
+        const id  = actionBtn.getAttribute("data-assign-id");
+        if (act==="assignDone") setAssignmentStatus(id, "done");
+        if (act==="assignHold") setAssignmentStatus(id, "hold");
+        if (act==="assignTodo") setAssignmentStatus(id, "todo");
+        return;
+      }
+
+      const row = t.closest("tr.row-click");
+      if (row){
+        const driverId = row.dataset.driverId;
+        STATE.expandedDriverId = (STATE.expandedDriverId===driverId) ? null : driverId;
+        renderDashboard();
+      }
+    });
+
+    clearLogBtn.addEventListener("click", ()=>{
+      if (!confirm("指示ログを削除しますか？（デモ用）")) return;
+      const logs = getLogs().filter(l=>l.date!==STATE.date);
+      saveLogs(logs);
+      renderLogPanel();
+    });
+
+    // dispatch stop search
+    let tmr2=null;
+    stopSearchInput.addEventListener("input", ()=>{
+      clearTimeout(tmr2);
+      tmr2=setTimeout(()=>{
+        STATE.stopQuery = stopSearchInput.value || "";
+        renderStopsList();
+      }, 120);
+    });
+
+    // select stop in dispatch
+    stopsList.addEventListener("click", (e)=>{
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      const card = t.closest(".card-clickable");
+      if (!card) return;
+      STATE.selectedStopId = card.dataset.stopId;
+      STATE.draftAssignments = [];
+      instructionText.value = "";
+      renderDispatch();
+    });
+
+    addAssignBtn.addEventListener("click", ()=>{
+      const stopId = STATE.selectedStopId;
+      if (!stopId) return;
+
+      const driverId = driverSelect.value;
+      const role = roleSelect.value;
+      const tq = taskQtyInput.value.trim()==="" ? null : Number(taskQtyInput.value);
+      const tw = taskWeightInput.value.trim()==="" ? null : Number(taskWeightInput.value);
+
+      const existing = getAssignmentsForDate().filter(a=>a.stop_id===stopId);
+      if (isDuplicateAssignment(stopId, driverId, existing, STATE.draftAssignments)){
+        alert("同一stopに同一ドライバーの割当が既にあります（デモでは重複禁止）。");
+        return;
+      }
+
+      STATE.draftAssignments.push({
+        id: uuidLike("as"),
+        date: STATE.date,
+        stop_id: stopId,
+        driver_id: driverId,
+        role,
+        task_qty: tq,
+        task_weight_kg: tw,
+        status: "todo",
+        done_at: null,
+        note: ""
+      });
+
+      taskQtyInput.value = "";
+      taskWeightInput.value = "";
+      renderSelectedStopHeader();
+      renderDraftList();
+    });
+
+    clearDraftBtn.addEventListener("click", ()=>{
+      STATE.draftAssignments = [];
+      renderSelectedStopHeader();
+      renderDraftList();
+    });
+
+    draftList.addEventListener("click", (e)=>{
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      const btn = t.closest('[data-action="removeDraft"]');
+      if (!btn) return;
+      const idx = Number(btn.getAttribute("data-idx"));
+      if (Number.isFinite(idx)){
+        STATE.draftAssignments.splice(idx,1);
+        renderSelectedStopHeader();
+        renderDraftList();
+      }
+    });
+
+    previewBtn.addEventListener("click", ()=>{
+      instructionText.value = buildInstructionPreview();
+    });
+
+    issueBtn.addEventListener("click", ()=>{
+      if (!STATE.selectedStopId) return;
+      if (STATE.draftAssignments.length===0) return;
+
+      const assigns = getAssignmentsForDate();
+      const merged = assigns.concat(STATE.draftAssignments);
+      saveAssignmentsForDate(merged);
+
+      const stopsEnriched = getStopsForDate().map(enrichStop);
+      const stop = stopsEnriched.find(s=>s.id===STATE.selectedStopId);
+      const title = stop
+        ? `${stop.pickup_time} ${stop.pickup_name} → ${stop.destination_name}（${stop.branch_name}）`
+        : "（stop不明）";
+
+      const logs = getLogs();
+      logs.push({
+        id: uuidLike("log"),
+        at: new Date().toISOString(),
+        date: STATE.date,
+        issuer: issuerInput.value.trim(),
+        title,
+        addedCount: STATE.draftAssignments.length,
+        note: instructionText.value.trim() || buildInstructionPreview()
+      });
+      saveLogs(logs);
+
+      STATE.draftAssignments = [];
+      instructionText.value = "";
+      alert("指示を発行しました（同一ブラウザの別タブにも共有されます）。");
+      renderAll();
+    });
+
+    // branch summary search + expand/collapse
+    let tmr3=null;
+    branchSummarySearch.addEventListener("input", ()=>{
+      clearTimeout(tmr3);
+      tmr3=setTimeout(()=>{
+        STATE.branchSearch = branchSummarySearch.value || "";
+        renderBranchSummary();
+      }, 120);
+    });
+
+    expandAllBranchBtn.addEventListener("click", ()=>{
+      const branches = loadJson(STORAGE_BRANCHES_KEY, []);
+      const dests = loadJson(STORAGE_DESTS_KEY, []);
+      branches.forEach(b=>STATE.branchExpanded[b.id]=true);
+      dests.forEach(d=>STATE.destExpanded[d.id]=true);
+      renderBranchSummary();
+    });
+
+    collapseAllBranchBtn.addEventListener("click", ()=>{
+      const branches = loadJson(STORAGE_BRANCHES_KEY, []);
+      const dests = loadJson(STORAGE_DESTS_KEY, []);
+      branches.forEach(b=>STATE.branchExpanded[b.id]=false);
+      dests.forEach(d=>STATE.destExpanded[d.id]=false);
+      renderBranchSummary();
+    });
+
+    branchSummaryList.addEventListener("click", (e)=>{
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+
+      const tb = t.closest('[data-action="toggleBranch"]');
+      if (tb){
+        const id = tb.getAttribute("data-branch-id");
+        STATE.branchExpanded[id] = !(STATE.branchExpanded[id] ?? true);
+        renderBranchSummary();
+        return;
+      }
+      const td = t.closest('[data-action="toggleDest"]');
+      if (td){
+        const id = td.getAttribute("data-dest-id");
+        STATE.destExpanded[id] = !(STATE.destExpanded[id] ?? false);
+        renderBranchSummary();
+        return;
+      }
+    });
+
+    // shared updates across tabs
+    window.addEventListener("storage", (e)=>{
+      if ([STORAGE_BRANCHES_KEY, STORAGE_DESTS_KEY, STORAGE_PICKUPS_KEY, STORAGE_STOPS_KEY, STORAGE_ASSIGN_KEY, STORAGE_LOG_KEY].includes(e.key)){
+        renderAll();
+      }
+    });
+
+    /********************
+     * Entry events
+     ********************/
+    entryPickup?.addEventListener("change", ()=>{
+      fillEntryDestinationOptionsByPickup(entryPickup.value);
+    });
+
+    entryDestination?.addEventListener("change", ()=>{
+      updateEntryBranchHint();
+    });
+
+    entryAddAssignSwitch?.addEventListener("change", ()=>{
+      entryAssignArea.style.display = entryAddAssignSwitch.checked ? "" : "none";
+    });
+
+    entryCreateStopBtn?.addEventListener("click", ()=>{
+      createStopFromEntry();
+    });
+
+    entryResetBtn?.addEventListener("click", ()=>{
+      resetEntryForm();
+    });
+
+    // “配車タブで開く”
+    entryLastResult?.addEventListener("click", (e)=>{
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      const btn = t.closest('[data-action="goDispatch"]');
+      if (!btn) return;
+
+      const stopId = btn.getAttribute("data-stop-id");
+      STATE.selectedStopId = stopId;
+      STATE.draftAssignments = [];
+      instructionText.value = "";
+
+      const tabBtn = document.querySelector('[data-bs-target="#pane-dispatch"]');
+      if (tabBtn) new bootstrap.Tab(tabBtn).show();
+
+      renderDispatch();
+    });
+
+    /********************
+     * Init
+     ********************/
+    (function init(){
+      STATE.date = todayStr();
+      dateInput.value = STATE.date;
+
+      ensureDataForDate();
+      initDriverSelect();
+
+      // ★Entry初期化
+      fillEntryPickupOptions();
+      if (entryPickup.value) fillEntryDestinationOptionsByPickup(entryPickup.value);
+      initEntryDriverSelect();
+      resetEntryForm();
+
+      renderAll();
+    })();
+
+  </script>
+</body>
+</html>
